@@ -1,32 +1,62 @@
-import { useState } from 'react';
-import reactLogo from './assets/react.svg';
+import { useEffect, useRef, useState } from 'react';
+import axios from 'axios';
+import useSWR from 'swr';
 import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0);
+  const [value, setValue] = useState('');
+  const [query, setQuery] = useState('');
+  const [errorCount, setErrorCount] = useState(0);
+  const { data } = useSWR(
+    `/auto-complete?q=${query}`,
+    async (key) => {
+      const { data } = await axios.get(key, {
+        timeout: 7000,
+      });
+
+      return data;
+    },
+    {
+      onSuccess() {
+        setErrorCount(0);
+      },
+      onError() {
+        setErrorCount((state) => state + 1);
+      },
+      errorRetryCount: 3,
+    }
+  );
+
+  useEffect(() => {
+    const tid = setTimeout(() => {
+      setQuery(value);
+    }, 500);
+
+    return () => {
+      clearTimeout(tid);
+    };
+  }, [value]);
 
   return (
     <div className="App">
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+      {errorCount > 0 && errorCount % 3 === 0 && <div>요청 실패</div>}
+
+      <ul>
+        {data?.map((el: any) => (
+          <li>{el}</li>
+        ))}
+      </ul>
+
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            setQuery(value);
+          }
+        }}
+      />
     </div>
   );
 }
