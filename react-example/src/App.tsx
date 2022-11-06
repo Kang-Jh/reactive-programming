@@ -11,7 +11,7 @@ function App() {
     `/auto-complete?q=${query}`,
     async (key) => {
       const { data } = await axios.get(key, {
-        timeout: 7000,
+        timeout: 2000,
       });
 
       return data;

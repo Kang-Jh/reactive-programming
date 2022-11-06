@@ -1,23 +1,65 @@
-import './style.css'
-import typescriptLogo from './typescript.svg'
-import { setupCounter } from './counter'
+import {
+  timeout,
+  retry,
+  fromEvent,
+  from,
+  map,
+  debounceTime,
+  distinctUntilChanged,
+  mergeMap,
+  tap,
+  filter,
+  share,
+  catchError,
+  of,
+} from 'rxjs';
+import { fromFetch } from 'rxjs/fetch';
+import { worker } from './mocks/browser';
+import './style.css';
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div>
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://www.typescriptlang.org/" target="_blank">
-      <img src="${typescriptLogo}" class="logo vanilla" alt="TypeScript logo" />
-    </a>
-    <h1>Vite + TypeScript</h1>
-    <div class="card">
-      <button id="counter" type="button"></button>
-    </div>
-    <p class="read-the-docs">
-      Click on the Vite and TypeScript logos to learn more
-    </p>
-  </div>
-`
+worker.start();
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+const root = document.getElementById('app') as HTMLDivElement;
+const input = document.createElement('input');
+let cache: { [key: string]: string[] } = {};
+
+const inputValue$ = fromEvent(input, 'input').pipe(
+  map((e) => (e.target as HTMLInputElement).value),
+  share()
+);
+const enterKeydownEvent$ = fromEvent(input, 'keydown').pipe(
+  filter((e) => (e as any).key === 'Enter')
+);
+
+let autoCompleteAbortController = new AbortController();
+
+inputValue$
+  .pipe(
+    debounceTime(500),
+    distinctUntilChanged(),
+    tap(() => {
+      autoCompleteAbortController.abort();
+      autoCompleteAbortController = new AbortController();
+    }),
+    mergeMap((text) =>
+      fromFetch(`/auto-complete?q=${text}`, {
+        signal: autoCompleteAbortController.signal,
+      }).pipe(
+        mergeMap((response) => from(response.json())),
+        tap((value) => (cache = { ...cache, [text]: value })),
+        timeout(2000),
+        retry(3),
+        catchError(() => of([]))
+      )
+    )
+  )
+  .subscribe((fetchResult) => console.log(`fetch result: `, fetchResult));
+
+inputValue$.subscribe((value) => console.log('cache result: ', cache[value]));
+
+enterKeydownEvent$.subscribe(() => {
+  autoCompleteAbortController.abort();
+  autoCompleteAbortController = new AbortController();
+});
+
+root.appendChild(input);
